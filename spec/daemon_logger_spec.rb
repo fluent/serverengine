@@ -172,4 +172,47 @@ describe ServerEngine::DaemonLogger do
     $stderr = STDERR
     stderr.should_not =~ /(log shifting failed|log writing failed|log rotation inter-process lock failed)/
   end
+
+  def lsof(path)
+    IO.popen("lsof | grep #{path}") do |io|
+      io.read
+    end
+  end
+
+  it 'reopen log when path is renamed' do
+    pending "not supported except Linux with inotify" unless ServerEngine.linux? and defined?(INotify)
+
+    log = DaemonLogger.new("tmp/rotate.log", level: 'info')
+    File.rename("tmp/rotate.log", "tmp/rotate.log.1")
+    log.info '1' * 15
+    FileUtils.touch("tmp/rotate.log")
+    lsof("rotate.log").should_not include("rotate.log.1")
+  end
+
+  it 'reopen log when path is renamed by external process' do
+    pending "not supported except Linux with inotify" unless ServerEngine.linux? and defined?(INotify)
+
+    log = DaemonLogger.new("tmp/rotate.log", level: 'info')
+    pid1 = Process.fork do
+      File.rename("tmp/rotate.log", "tmp/rotate.log.1")
+      FileUtils.touch("tmp/rotate.log")
+    end
+    Process.waitpid pid1
+    log.info '1' * 15
+    lsof("rotate.log").should_not include("rotate.log.1")
+  end
+
+  it 'reopen logger when file is renamed' do
+    pending "not supported except Linux with inotify" unless ServerEngine.linux? and defined?(INotify)
+
+    log = DaemonLogger.new("tmp/dummy.log", level: 'info')
+    log.logdev = File.open("tmp/rotate.log", "w")
+    pid1 = Process.fork do
+      File.rename("tmp/rotate.log", "tmp/rotate.log.1")
+      FileUtils.touch("tmp/rotate.log")
+    end
+    Process.waitpid pid1
+    log.info '1' * 15
+    lsof("rotate.log").should_not include("rotate.log.1")
+  end
 end

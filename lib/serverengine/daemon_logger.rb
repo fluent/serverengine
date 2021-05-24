@@ -16,6 +16,7 @@
 #    limitations under the License.
 #
 require 'logger'
+require 'serverengine/utils'
 
 module ServerEngine
 
@@ -35,6 +36,13 @@ module ServerEngine
       @file_dev = nil
 
       super(nil)
+
+      if ServerEngine::linux?
+        begin
+          require 'rb-inotify'
+        rescue LoadError
+        end
+      end
 
       self.level = config[:log_level] || 'debug'
       self.logdev = logdev
@@ -58,6 +66,7 @@ module ServerEngine
         old_file_dev.close if old_file_dev
         @logdev = @file_dev
       end
+      enable_watching_logdev(logdev) if defined?(INotify)
       logdev
     end
 
@@ -76,7 +85,49 @@ module ServerEngine
       end
       progname ||= @progname
       self << format_message(SEVERITY_FORMATS_[severity+1], Time.now, progname, message)
+      poll_pending_inotify if defined?(INotify)
       true
+    end
+
+    def poll_pending_inotify
+      return unless ServerEngine::linux?
+      return unless @inotify
+
+      if IO.select([@inotify.to_io], [], [], 0)
+        @inotify.process
+      end
+    end
+
+    def enable_watching_logdev(logdev)
+      return unless ServerEngine::linux?
+
+      target = nil
+      if logdev.respond_to?(:filename)
+        target = logdev.filename
+      elsif logdev.respond_to?(:path)
+        target = logdev.path
+      elsif logdev.is_a?(String)
+        target = logdev
+      else
+        # ignore StringIO for some test cases
+        return
+      end
+      if target
+        @inotify.close if @inotify
+        @inotify = INotify::Notifier.new
+        @inotify.watch(target, :move_self) do |event|
+          if @logdev.respond_to?(:filename)
+            @logdev.close
+            @logdev.reopen(@logdev.filename)
+          elsif @logdev.respond_to?(:path)
+            @logdev.close
+            @logdev.reopen(@logdev.path)
+          else
+            close
+            reopen
+          end
+        end
+      end
     end
 
     module Severity

@@ -18,10 +18,15 @@
 module ServerEngine
 
   IS_WINDOWS = /mswin|mingw/ === RUBY_PLATFORM
+  IS_LINUX = /linux/ === RUBY_PLATFORM
   private_constant :IS_WINDOWS
 
   def self.windows?
     IS_WINDOWS
+  end
+
+  def self.linux?
+    IS_LINUX
   end
 
   module ClassMethods

@@ -9,8 +9,12 @@ jobs:
       fail-fast: false
       matrix:
         ruby: [ '3.0', '2.7', '2.6', '2.5' ]
-        os:
-          - ubuntu-latest
+        os: [ 'ubuntu-latest' ]
+        test-optional: [ true ]
+        include:
+          - ruby: '2.7'
+            os: ubuntu-latest
+            test-optional: false
     name: Ruby ${{ matrix.ruby }} unit testing on ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
@@ -22,5 +26,5 @@ jobs:
         CI: true
       run: |
         gem install bundler rake
-        bundle install --jobs 4 --retry 3
+        bundle install --jobs 4 --retry 3 ${{ matrix.test-optional && '--with inotify' || '' }}
         bundle exec rake spec
